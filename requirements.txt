@@ -5,3 +5,4 @@ langchain-huggingface
 chromadb
 pandas
 huggingface_hub
+beautifulsoup4
