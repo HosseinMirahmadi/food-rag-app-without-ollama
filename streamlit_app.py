@@ -8,7 +8,7 @@ from langchain_community.document_loaders import WebBaseLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_community.vectorstores import Chroma
-from langchain_huggingface import HuggingFaceEndpoint  # جدید
+from langchain_huggingface import HuggingFaceEndpoint
 
 # ===========================
 # تنظیمات صفحه
@@ -20,7 +20,7 @@ st.set_page_config(
 )
 
 # ===========================
-# تنظیمات استایل (CSS) – بدون تغییر
+# استایل CSS (راست‌چین و زیبا)
 # ===========================
 st.markdown("""
 <style>
@@ -36,11 +36,7 @@ st.markdown("""
         background: linear-gradient(135deg, #0f2027, #203a43, #2c5364);
     }
 
-    .stTextInput > div > div > input {
-        direction: rtl;
-        text-align: right;
-    }
-    .stTextArea > div > div > textarea {
+    .stTextInput > div > div > input, .stTextArea > div > div > textarea {
         direction: rtl;
         text-align: right;
     }
@@ -53,50 +49,21 @@ st.markdown("""
         margin-bottom: 20px;
         border: 1px solid #333;
     }
-    .title {
-        font-size: 2.4em;
-        font-weight: 800;
-        color: #6ee7b7;
-        text-align: right;
-    }
-    .subtitle {
-        color: #a7f3d0;
-        font-size: 1.1em;
-        text-align: right;
-        margin-top: 5px;
-    }
-    .result-text {
-        color: #e2e8f0;
-        font-size: 1.1em;
-        line-height: 1.8;
-        text-align: right;
-        direction: rtl;
-    }
+    .title { font-size: 2.4em; font-weight: 800; color: #6ee7b7; text-align: right; }
+    .subtitle { color: #a7f3d0; font-size: 1.1em; text-align: right; margin-top: 5px; }
+    .result-text { color: #e2e8f0; font-size: 1.1em; line-height: 1.8; text-align: right; direction: rtl; }
 
-    [data-testid="stDataFrame"] {
-        direction: rtl;
-        text-align: right;
+    [data-testid="stDataFrame"] { direction: rtl; text-align: right; }
+    .stDataFrame div[role="columnheader"], .stDataFrame div[role="gridcell"] {
+        text-align: right !important; justify-content: right !important;
     }
-    .stDataFrame div[role="columnheader"] {
-        text-align: right !important;
-        justify-content: right !important;
-    }
-    .stDataFrame div[role="gridcell"] {
-        text-align: right !important;
-        justify-content: right !important;
-    }
-    
-    .stAlert {
-        direction: rtl;
-        text-align: right;
-    }
+    .stAlert { direction: rtl; text-align: right; }
 </style>
 """, unsafe_allow_html=True)
 
 # ===========================
-# منطق برنامه (Logic)
+# تنظیمات ثابت
 # ===========================
-
 PERSIST_DIRECTORY = "./chroma_db_food"
 EMBEDDING_MODEL_NAME = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
 
@@ -118,8 +85,8 @@ def create_knowledge_base(urls):
         all_splits = text_splitter.split_documents(data)
         embedding_model = load_embedding_model()
         vector_db = Chroma.from_documents(
-            documents=all_splits, 
-            embedding=embedding_model, 
+            documents=all_splits,
+            embedding=embedding_model,
             persist_directory=PERSIST_DIRECTORY
         )
         return True, len(all_splits)
@@ -132,10 +99,11 @@ def perform_rag_search(query):
     retriever = vector_db.as_retriever(search_kwargs={"k": 5})
     docs = retriever.invoke(query)
     
-    # --- جدید: استفاده از Hugging Face Inference API ---
+    # --- مدل LLM از Hugging Face (رایگان و قوی) ---
     llm = HuggingFaceEndpoint(
-        repo_id="mistralai/Mistral-7B-Instruct-v0.3",  # مدل قوی و رایگان با پشتیبانی عالی از فارسی
-        huggingfacehub_api_token=st.secrets["HUGGINGFACEHUB_API_TOKEN"],  # توکن رو در Secrets بذار
+        repo_id="mistralai/Mistral-7B-Instruct-v0.3",
+        huggingfacehub_api_token=st.secrets["HUGGINGFACEHUB_API_TOKEN"],
+        task="conversational",           # مهم: این خط ارور قبلی رو حل می‌کنه
         temperature=0.7,
         max_new_tokens=512,
         repetition_penalty=1.1
@@ -143,7 +111,6 @@ def perform_rag_search(query):
     
     context_text = "\n\n".join([doc.page_content for doc in docs])
     
-    # پرامپت فارسی قوی‌تر
     prompt = f"""
     تو یک متخصص حرفه‌ای غذا و آشپزی ایرانی هستی.
     فقط و فقط به زبان فارسی (فارسی استاندارد) پاسخ بده. از انگلیسی استفاده نکن.
@@ -160,9 +127,8 @@ def perform_rag_search(query):
     return response, docs
 
 # ===========================
-# رابط کاربری (UI) – بدون تغییر
+# رابط کاربری
 # ===========================
-
 st.markdown("""
 <div class="card">
     <div class="title">🥗 دستیار هوشمند غذا و رستوران</div>
@@ -185,7 +151,7 @@ st.markdown("### 👨‍🍳 مرحله ۲: پردازش")
 if st.button("🍳 بررسی و یادگیری"):
     if input_urls.strip():
         url_list = [u.strip() for u in input_urls.split('\n') if u.strip()]
-        with st.spinner('در حال خواندن منوها...'):
+        with st.spinner('در حال خواندن منوها و ساخت پایگاه دانش...'):
             success, result = create_knowledge_base(url_list)
         if success:
             st.success(f"✅ انجام شد! {result} بخش متنی ذخیره شد.")
@@ -193,13 +159,12 @@ if st.button("🍳 بررسی و یادگیری"):
         else:
             st.error(f"❌ خطا: {result}")
     else:
-        st.warning("⚠️ لطفاً لینک وارد کنید.")
+        st.warning("⚠️ لطفاً حداقل یک لینک وارد کنید.")
 
 if st.session_state.get("db_ready"):
     st.markdown("### 🍽️ مرحله ۳: پرسش و پاسخ")
 
     col1, col2 = st.columns([4, 1])
-    
     with col1:
         query = st.text_input(
             "سوال شما:",
@@ -210,21 +175,18 @@ if st.session_state.get("db_ready"):
         search = st.button("🔎 جستجو", use_container_width=True)
 
     if search and query:
-        with st.spinner('در حال نوشتن پاسخ...'):
+        with st.spinner('در حال جستجو و نوشتن پاسخ...'):
             try:
                 ai_response, source_docs = perform_rag_search(query)
                 
                 st.markdown(f"""
                 <div class="card">
                     <h3 style="color:#fbbf24; text-align:right; margin-bottom:10px;">🍕 پاسخ هوش مصنوعی:</h3>
-                    <div class="result-text">
-                    {ai_response}
-                    </div>
+                    <div class="result-text">{ai_response}</div>
                 </div>
                 """, unsafe_allow_html=True)
 
                 st.markdown("### 📜 منابع یافت شده")
-                
                 table_data = []
                 for idx, doc in enumerate(source_docs):
                     table_data.append({
@@ -234,9 +196,8 @@ if st.session_state.get("db_ready"):
                     })
                 
                 df = pd.DataFrame(table_data)
-                
                 st.dataframe(
-                    df, 
+                    df,
                     use_container_width=True,
                     column_config={
                         "لینک منبع": st.column_config.LinkColumn("لینک کامل"),
@@ -246,4 +207,4 @@ if st.session_state.get("db_ready"):
                 )
                 
             except Exception as e:
-                st.error(f"خطا: {e}")
+                st.error(f"خطا در تولید پاسخ: {e}")
