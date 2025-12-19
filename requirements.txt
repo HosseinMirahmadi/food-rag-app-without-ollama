@@ -6,3 +6,4 @@ chromadb
 pandas
 huggingface_hub
 beautifulsoup4
+sentence-transformers
