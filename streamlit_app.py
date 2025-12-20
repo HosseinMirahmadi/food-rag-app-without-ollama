@@ -5,8 +5,9 @@ import shutil
 
 from langchain_community.document_loaders import WebBaseLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain_huggingface import HuggingFaceEmbeddings, HuggingFaceEndpoint, ChatHuggingFace
+from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_community.vectorstores import Chroma
+from langchain_huggingface import HuggingFaceEndpoint
 
 st.set_page_config(page_title="غذا و رستوران", page_icon="🥗", layout="wide")
 
@@ -62,23 +63,28 @@ def perform_rag_search(query):
     
     context_text = "\n\n".join([doc.page_content for doc in docs])
     
-    # استفاده از ChatHuggingFace برای حل کامل ارور task
-    base_llm = HuggingFaceEndpoint(
-        repo_id="HuggingFaceH4/zephyr-7b-beta",
+    # بهترین مدل رایگان فارسی – بدون تکرار و خوانا
+    llm = HuggingFaceEndpoint(
+        repo_id="universitytehran/PersianMind-v1.0",
         huggingfacehub_api_token=st.secrets["HUGGINGFACEHUB_API_TOKEN"],
-        max_new_tokens=512,
         temperature=0.7,
-        repetition_penalty=1.2
+        max_new_tokens=512,
+        repetition_penalty=1.1
     )
     
-    llm = ChatHuggingFace(llm=base_llm)
+    prompt = f"""
+    تو یک متخصص حرفه‌ای غذا و آشپزی ایرانی هستی.
+    فقط و فقط به زبان فارسی استاندارد پاسخ بده. پاسخ را کامل، مفید و بدون تکرار بنویس.
     
-    messages = [
-        {"role": "system", "content": "تو یک متخصص حرفه‌ای غذا و آشپزی ایرانی هستی. فقط به زبان فارسی استاندارد پاسخ بده. پاسخ را کامل، مفید و بدون تکرار بنویس."},
-        {"role": "user", "content": f"اطلاعات مرتبط:\n{context_text}\n\nسوال کاربر: {query}\n\nپاسخ:"}
-    ]
+    اطلاعات مرتبط:
+    {context_text}
     
-    response = llm.invoke(messages).content
+    سوال کاربر: {query}
+    
+    پاسخ:
+    """
+    
+    response = llm.invoke(prompt)
     return response, docs
 
 st.markdown("""
