@@ -5,9 +5,8 @@ import shutil
 
 from langchain_community.document_loaders import WebBaseLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain_huggingface import HuggingFaceEmbeddings
+from langchain_huggingface import HuggingFaceEmbeddings, HuggingFaceEndpoint, ChatHuggingFace  # جدید: ChatHuggingFace اضافه شد
 from langchain_community.vectorstores import Chroma
-from langchain_huggingface import HuggingFaceEndpoint
 
 st.set_page_config(page_title="غذا و رستوران", page_icon="🥗", layout="wide")
 
@@ -61,8 +60,10 @@ def perform_rag_search(query):
     retriever = vector_db.as_retriever(search_kwargs={"k": 5})
     docs = retriever.invoke(query)
     
-    # مدل Zephyr با پرامپت دستی (chat template Zephyr) – این ارور رو ۱۰۰٪ حل می‌کنه
-    llm = HuggingFaceEndpoint(
+    context_text = "\n\n".join([doc.page_content for doc in docs])
+    
+    # --- جدید: استفاده از ChatHuggingFace برای مدل conversational ---
+    base_llm = HuggingFaceEndpoint(
         repo_id="HuggingFaceH4/zephyr-7b-beta",
         huggingfacehub_api_token=st.secrets["HUGGINGFACEHUB_API_TOKEN"],
         temperature=0.7,
@@ -70,19 +71,14 @@ def perform_rag_search(query):
         repetition_penalty=1.1
     )
     
-    context_text = "\n\n".join([doc.page_content for doc in docs])
+    llm = ChatHuggingFace(llm=base_llm)  # این خط ارور task رو کامل حل می‌کنه
     
-    # فرمت چت دستی Zephyr (این بهترین راه برای مدل‌های instruct روی serverless)
-    prompt = f"""<|system|>
-تو یک متخصص حرفه‌ای غذا و آشپزی ایرانی هستی. فقط و فقط به زبان فارسی استاندارد پاسخ بده. از انگلیسی استفاده نکن.</s>
-<|user|>
-اطلاعات مرتبط از منابع:
-{context_text}
-
-سوال کاربر: {query}</s>
-<|assistant|>"""
+    messages = [
+        {"role": "system", "content": "تو یک متخصص حرفه‌ای غذا و آشپزی ایرانی هستی. فقط و فقط به زبان فارسی استاندارد پاسخ بده. از انگلیسی یا هر زبان دیگری استفاده نکن."},
+        {"role": "user", "content": f"اطلاعات مرتبط از منابع:\n{context_text}\n\nسوال کاربر: {query}\n\nپاسخ کامل، دقیق و مفید به فارسی بده:"}
+    ]
     
-    response = llm.invoke(prompt)
+    response = llm.invoke(messages).content  # .content برای گرفتن فقط متن پاسخ
     return response, docs
 
 # رابط کاربری (همون قبلی)
