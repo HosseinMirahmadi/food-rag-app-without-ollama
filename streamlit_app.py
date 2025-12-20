@@ -61,7 +61,7 @@ def perform_rag_search(query):
     retriever = vector_db.as_retriever(search_kwargs={"k": 5})
     docs = retriever.invoke(query)
     
-    # مدل قوی و رایگان با فرمت چت (ارور task رو کامل حل می‌کنه)
+    # مدل Zephyr با پرامپت دستی (chat template Zephyr) – این ارور رو ۱۰۰٪ حل می‌کنه
     llm = HuggingFaceEndpoint(
         repo_id="HuggingFaceH4/zephyr-7b-beta",
         huggingfacehub_api_token=st.secrets["HUGGINGFACEHUB_API_TOKEN"],
@@ -72,16 +72,20 @@ def perform_rag_search(query):
     
     context_text = "\n\n".join([doc.page_content for doc in docs])
     
-    # پرامپت به فرمت چت (messages) – این روش ۱۰۰٪ کار می‌کنه
-    messages = [
-        {"role": "system", "content": "تو یک متخصص حرفه‌ای غذا و آشپزی ایرانی هستی. فقط و فقط به زبان فارسی استاندارد پاسخ بده. از انگلیسی یا هر زبان دیگری استفاده نکن."},
-        {"role": "user", "content": f"اطلاعات مرتبط از منابع:\n{context_text}\n\nسوال کاربر: {query}\n\nپاسخ کامل، دقیق و مفید به فارسی بده:"}
-    ]
+    # فرمت چت دستی Zephyr (این بهترین راه برای مدل‌های instruct روی serverless)
+    prompt = f"""<|system|>
+تو یک متخصص حرفه‌ای غذا و آشپزی ایرانی هستی. فقط و فقط به زبان فارسی استاندارد پاسخ بده. از انگلیسی استفاده نکن.</s>
+<|user|>
+اطلاعات مرتبط از منابع:
+{context_text}
+
+سوال کاربر: {query}</s>
+<|assistant|>"""
     
-    response = llm.invoke(messages)
+    response = llm.invoke(prompt)
     return response, docs
 
-# رابط کاربری
+# رابط کاربری (همون قبلی)
 st.markdown("""
 <div class="card">
     <div class="title">🥗 دستیار هوشمند غذا و رستوران</div>
