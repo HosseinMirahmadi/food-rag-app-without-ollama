@@ -5,9 +5,8 @@ import shutil
 
 from langchain_community.document_loaders import WebBaseLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain_huggingface import HuggingFaceEmbeddings
+from langchain_huggingface import HuggingFaceEmbeddings, HuggingFaceEndpoint, ChatHuggingFace
 from langchain_community.vectorstores import Chroma
-from langchain_huggingface import HuggingFaceEndpoint
 
 st.set_page_config(page_title="غذا و رستوران", page_icon="🥗", layout="wide")
 
@@ -63,27 +62,23 @@ def perform_rag_search(query):
     
     context_text = "\n\n".join([doc.page_content for doc in docs])
     
-    # مدل Zephyr با تنظیمات ضدتکرار قوی
-    llm = HuggingFaceEndpoint(
+    # استفاده از ChatHuggingFace برای حل کامل ارور task
+    base_llm = HuggingFaceEndpoint(
         repo_id="HuggingFaceH4/zephyr-7b-beta",
         huggingfacehub_api_token=st.secrets["HUGGINGFACEHUB_API_TOKEN"],
         max_new_tokens=512,
-        temperature=0.5,               # پایین‌تر برای پاسخ‌های پایدارتر
-        repetition_penalty=1.2,        # بالاتر برای جلوگیری کامل از تکرار
-        do_sample=False                # خاموش کردن sample برای خروجی deterministic و بدون تکرار
+        temperature=0.7,
+        repetition_penalty=1.2
     )
     
-    # پرامپت دستی Zephyr (بهترین فرمت برای این مدل)
-    prompt = f"""<|system|>
-تو یک متخصص حرفه‌ای غذا و آشپزی ایرانی هستی. فقط و فقط به زبان فارسی استاندارد پاسخ بده. پاسخ را کوتاه، مفید و بدون تکرار بنویس.</s>
-<|user|>
-اطلاعات مرتبط:
-{context_text}
-
-سوال: {query}</s>
-<|assistant|>"""
+    llm = ChatHuggingFace(llm=base_llm)
     
-    response = llm.invoke(prompt)
+    messages = [
+        {"role": "system", "content": "تو یک متخصص حرفه‌ای غذا و آشپزی ایرانی هستی. فقط به زبان فارسی استاندارد پاسخ بده. پاسخ را کامل، مفید و بدون تکرار بنویس."},
+        {"role": "user", "content": f"اطلاعات مرتبط:\n{context_text}\n\nسوال کاربر: {query}\n\nپاسخ:"}
+    ]
+    
+    response = llm.invoke(messages).content
     return response, docs
 
 st.markdown("""
