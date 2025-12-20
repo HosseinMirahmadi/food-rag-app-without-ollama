@@ -5,8 +5,9 @@ import shutil
 
 from langchain_community.document_loaders import WebBaseLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain_huggingface import HuggingFaceEmbeddings, HuggingFaceEndpoint, ChatHuggingFace  # جدید: ChatHuggingFace اضافه شد
+from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_community.vectorstores import Chroma
+from langchain_huggingface import HuggingFaceEndpoint
 
 st.set_page_config(page_title="غذا و رستوران", page_icon="🥗", layout="wide")
 
@@ -62,26 +63,29 @@ def perform_rag_search(query):
     
     context_text = "\n\n".join([doc.page_content for doc in docs])
     
-    # --- جدید: استفاده از ChatHuggingFace برای مدل conversational ---
-    base_llm = HuggingFaceEndpoint(
+    # مدل Zephyr با تنظیمات ضدتکرار قوی
+    llm = HuggingFaceEndpoint(
         repo_id="HuggingFaceH4/zephyr-7b-beta",
         huggingfacehub_api_token=st.secrets["HUGGINGFACEHUB_API_TOKEN"],
-        temperature=0.7,
         max_new_tokens=512,
-        repetition_penalty=1.1
+        temperature=0.5,               # پایین‌تر برای پاسخ‌های پایدارتر
+        repetition_penalty=1.2,        # بالاتر برای جلوگیری کامل از تکرار
+        do_sample=False                # خاموش کردن sample برای خروجی deterministic و بدون تکرار
     )
     
-    llm = ChatHuggingFace(llm=base_llm)  # این خط ارور task رو کامل حل می‌کنه
+    # پرامپت دستی Zephyr (بهترین فرمت برای این مدل)
+    prompt = f"""<|system|>
+تو یک متخصص حرفه‌ای غذا و آشپزی ایرانی هستی. فقط و فقط به زبان فارسی استاندارد پاسخ بده. پاسخ را کوتاه، مفید و بدون تکرار بنویس.</s>
+<|user|>
+اطلاعات مرتبط:
+{context_text}
+
+سوال: {query}</s>
+<|assistant|>"""
     
-    messages = [
-        {"role": "system", "content": "تو یک متخصص حرفه‌ای غذا و آشپزی ایرانی هستی. فقط و فقط به زبان فارسی استاندارد پاسخ بده. از انگلیسی یا هر زبان دیگری استفاده نکن."},
-        {"role": "user", "content": f"اطلاعات مرتبط از منابع:\n{context_text}\n\nسوال کاربر: {query}\n\nپاسخ کامل، دقیق و مفید به فارسی بده:"}
-    ]
-    
-    response = llm.invoke(messages).content  # .content برای گرفتن فقط متن پاسخ
+    response = llm.invoke(prompt)
     return response, docs
 
-# رابط کاربری (همون قبلی)
 st.markdown("""
 <div class="card">
     <div class="title">🥗 دستیار هوشمند غذا و رستوران</div>
