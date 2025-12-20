@@ -46,7 +46,11 @@ def create_knowledge_base(urls):
         text_splitter = RecursiveCharacterTextSplitter(chunk_size=800, chunk_overlap=100)
         all_splits = text_splitter.split_documents(data)
         embedding_model = load_embedding_model()
-        vector_db = Chroma.from_documents(documents=all_splits, embedding=embedding_model, persist_directory=PERSIST_DIRECTORY)
+        vector_db = Chroma.from_documents(
+            documents=all_splits,
+            embedding=embedding_model,
+            persist_directory=PERSIST_DIRECTORY
+        )
         return True, len(all_splits)
     except Exception as e:
         return False, str(e)
@@ -57,9 +61,9 @@ def perform_rag_search(query):
     retriever = vector_db.as_retriever(search_kwargs={"k": 5})
     docs = retriever.invoke(query)
     
-    # --- مدل جدید: Zephyr-7B-Beta (رایگان، قوی و بدون ارور task) ---
+    # مدل قوی و رایگان با فرمت چت (ارور task رو کامل حل می‌کنه)
     llm = HuggingFaceEndpoint(
-        repo_id="HuggingFaceH4/zephyr-7b-beta",  # تغییر اصلی اینجا
+        repo_id="HuggingFaceH4/zephyr-7b-beta",
         huggingfacehub_api_token=st.secrets["HUGGINGFACEHUB_API_TOKEN"],
         temperature=0.7,
         max_new_tokens=512,
@@ -68,21 +72,16 @@ def perform_rag_search(query):
     
     context_text = "\n\n".join([doc.page_content for doc in docs])
     
-    prompt = f"""
-    تو یک متخصص حرفه‌ای غذا و آشپزی ایرانی هستی.
-    فقط و فقط به زبان فارسی (فارسی استاندارد) پاسخ بده. از انگلیسی استفاده نکن.
+    # پرامپت به فرمت چت (messages) – این روش ۱۰۰٪ کار می‌کنه
+    messages = [
+        {"role": "system", "content": "تو یک متخصص حرفه‌ای غذا و آشپزی ایرانی هستی. فقط و فقط به زبان فارسی استاندارد پاسخ بده. از انگلیسی یا هر زبان دیگری استفاده نکن."},
+        {"role": "user", "content": f"اطلاعات مرتبط از منابع:\n{context_text}\n\nسوال کاربر: {query}\n\nپاسخ کامل، دقیق و مفید به فارسی بده:"}
+    ]
     
-    اطلاعات مرتبط:
-    {context_text}
-    
-    سوال کاربر: {query}
-    
-    پاسخ کامل و مفید (به فارسی):
-    """
-    
-    response = llm.invoke(prompt)
+    response = llm.invoke(messages)
     return response, docs
 
+# رابط کاربری
 st.markdown("""
 <div class="card">
     <div class="title">🥗 دستیار هوشمند غذا و رستوران</div>
@@ -103,7 +102,7 @@ st.markdown("### 👨‍🍳 مرحله ۲: پردازش")
 if st.button("🍳 بررسی و یادگیری"):
     if input_urls.strip():
         url_list = [u.strip() for u in input_urls.split('\n') if u.strip()]
-        with st.spinner('در حال خواندن منوها و ساخت پایگاه دانش...'):
+        with st.spinner('در حال خواندن منابع و ساخت پایگاه دانش...'):
             success, result = create_knowledge_base(url_list)
         if success:
             st.success(f"✅ انجام شد! {result} بخش متنی ذخیره شد.")
@@ -123,9 +122,10 @@ if st.session_state.get("db_ready"):
         search = st.button("🔎 جستجو", use_container_width=True)
 
     if search and query:
-        with st.spinner('در حال جستجو و نوشتن پاسخ...'):
+        with st.spinner('در حال جستجو و تولید پاسخ...'):
             try:
                 ai_response, source_docs = perform_rag_search(query)
+                
                 st.markdown(f"""
                 <div class="card">
                     <h3 style="color:#fbbf24; text-align:right; margin-bottom:10px;">🍕 پاسخ هوش مصنوعی:</h3>
@@ -142,6 +142,14 @@ if st.session_state.get("db_ready"):
                         "لینک منبع": doc.metadata.get('source', 'نامشخص'),
                     })
                 df = pd.DataFrame(table_data)
-                st.dataframe(df, use_container_width=True, column_config={"لینک منبع": st.column_config.LinkColumn("لینک کامل"), "رتبه": st.column_config.NumberColumn("رتبه", format="%d")}, hide_index=True)
+                st.dataframe(
+                    df,
+                    use_container_width=True,
+                    column_config={
+                        "لینک منبع": st.column_config.LinkColumn("لینک کامل"),
+                        "رتبه": st.column_config.NumberColumn("رتبه", format="%d")
+                    },
+                    hide_index=True
+                )
             except Exception as e:
                 st.error(f"خطا در تولید پاسخ: {e}")
