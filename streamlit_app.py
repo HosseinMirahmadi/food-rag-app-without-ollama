@@ -1,11 +1,12 @@
 import streamlit as st
 import pandas as pd
+import os
+import shutil
 
 from langchain_community.document_loaders import WebBaseLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain_huggingface import HuggingFaceEmbeddings
+from langchain_huggingface import HuggingFaceEmbeddings, HuggingFaceEndpoint, ChatHuggingFace
 from langchain_community.vectorstores import Chroma
-from langchain_huggingface import HuggingFaceEndpoint
 
 st.set_page_config(page_title="غذا و رستوران", page_icon="🥗", layout="wide")
 
@@ -25,62 +26,61 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+PERSIST_DIRECTORY = "./chroma_db_food"
 EMBEDDING_MODEL_NAME = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
 
 @st.cache_resource
 def load_embedding_model():
     return HuggingFaceEmbeddings(model_name=EMBEDDING_MODEL_NAME)
 
-# --- حذف persist_directory و in-memory ---
 def create_knowledge_base(urls):
+    if os.path.exists(PERSIST_DIRECTORY):
+        try:
+            shutil.rmtree(PERSIST_DIRECTORY)
+        except:
+            pass
     try:
         loader = WebBaseLoader(urls)
         data = loader.load()
         text_splitter = RecursiveCharacterTextSplitter(chunk_size=800, chunk_overlap=100)
         all_splits = text_splitter.split_documents(data)
         embedding_model = load_embedding_model()
-        # in-memory Chroma (بدون persist_directory)
         vector_db = Chroma.from_documents(
             documents=all_splits,
-            embedding=embedding_model
-            # persist_directory حذف شد – حالا in-memory هست
+            embedding=embedding_model,
+            persist_directory=PERSIST_DIRECTORY
         )
-        return True, len(all_splits), vector_db  # vector_db رو برمی‌گردونیم
+        return True, len(all_splits)
     except Exception as e:
-        return False, str(e), None
+        return False, str(e)
 
-def perform_rag_search(query, vector_db):
-    if vector_db is None:
-        return "دیتابیس آماده نیست.", []
+def perform_rag_search(query):
+    embedding_model = load_embedding_model()
+    vector_db = Chroma(persist_directory=PERSIST_DIRECTORY, embedding_function=embedding_model)
     retriever = vector_db.as_retriever(search_kwargs={"k": 5})
     docs = retriever.invoke(query)
     
     context_text = "\n\n".join([doc.page_content for doc in docs])
     
-    llm = HuggingFaceEndpoint(
-        repo_id="universitytehran/PersianMind-v1.0",  # بهترین مدل فارسی رایگان
+    # استفاده از ChatHuggingFace برای حل کامل ارور task
+    base_llm = HuggingFaceEndpoint(
+        repo_id="HuggingFaceH4/zephyr-7b-beta",
         huggingfacehub_api_token=st.secrets["HUGGINGFACEHUB_API_TOKEN"],
-        temperature=0.7,
         max_new_tokens=512,
-        repetition_penalty=1.1
+        temperature=0.7,
+        repetition_penalty=1.2
     )
     
-    prompt = f"""
-    تو یک متخصص حرفه‌ای غذا و آشپزی ایرانی هستی.
-    فقط به زبان فارسی استاندارد پاسخ بده.
+    llm = ChatHuggingFace(llm=base_llm)
     
-    اطلاعات مرتبط:
-    {context_text}
+    messages = [
+        {"role": "system", "content": "تو یک متخصص حرفه‌ای غذا و آشپزی ایرانی هستی. فقط به زبان فارسی استاندارد پاسخ بده. پاسخ را کامل، مفید و بدون تکرار بنویس."},
+        {"role": "user", "content": f"اطلاعات مرتبط:\n{context_text}\n\nسوال کاربر: {query}\n\nپاسخ:"}
+    ]
     
-    سوال کاربر: {query}
-    
-    پاسخ کامل و مفید:
-    """
-    
-    response = llm.invoke(prompt)
+    response = llm.invoke(messages).content
     return response, docs
 
-# رابط کاربری
 st.markdown("""
 <div class="card">
     <div class="title">🥗 دستیار هوشمند غذا و رستوران</div>
@@ -101,11 +101,10 @@ st.markdown("### 👨‍🍳 مرحله ۲: پردازش")
 if st.button("🍳 بررسی و یادگیری"):
     if input_urls.strip():
         url_list = [u.strip() for u in input_urls.split('\n') if u.strip()]
-        with st.spinner('در حال خواندن منابع و ساخت پایگاه دانش (در حافظه)...'):
-            success, result, vector_db = create_knowledge_base(url_list)
+        with st.spinner('در حال خواندن منابع و ساخت پایگاه دانش...'):
+            success, result = create_knowledge_base(url_list)
         if success:
-            st.success(f"✅ انجام شد! {result} بخش متنی آماده شد.")
-            st.session_state["vector_db"] = vector_db  # ذخیره در session
+            st.success(f"✅ انجام شد! {result} بخش متنی ذخیره شد.")
             st.session_state["db_ready"] = True
         else:
             st.error(f"❌ خطا: {result}")
@@ -124,8 +123,7 @@ if st.session_state.get("db_ready"):
     if search and query:
         with st.spinner('در حال جستجو و تولید پاسخ...'):
             try:
-                vector_db = st.session_state["vector_db"]
-                ai_response, source_docs = perform_rag_search(query, vector_db)
+                ai_response, source_docs = perform_rag_search(query)
                 
                 st.markdown(f"""
                 <div class="card">
