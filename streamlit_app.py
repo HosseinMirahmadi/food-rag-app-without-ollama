@@ -3,67 +3,30 @@ import pandas as pd
 import os
 import shutil
 
-# --- کتابخانه‌های منطق RAG ---
 from langchain_community.document_loaders import WebBaseLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_community.vectorstores import Chroma
 from langchain_huggingface import HuggingFaceEndpoint
 
-# ===========================
-# تنظیمات صفحه
-# ===========================
-st.set_page_config(
-    page_title="غذا و رستوران",
-    page_icon="🥗",
-    layout="wide"
-)
+st.set_page_config(page_title="غذا و رستوران", page_icon="🥗", layout="wide")
 
-# ===========================
-# استایل CSS (راست‌چین و زیبا)
-# ===========================
 st.markdown("""
 <style>
     @import url('https://v1.fontapi.ir/css/Vazir');
-    
-    html, body, [class*="css"] {
-        font-family: 'Vazir', 'Tahoma', sans-serif;
-        direction: rtl;
-        text-align: right;
-    }
-
-    .stApp {
-        background: linear-gradient(135deg, #0f2027, #203a43, #2c5364);
-    }
-
-    .stTextInput > div > div > input, .stTextArea > div > div > textarea {
-        direction: rtl;
-        text-align: right;
-    }
-
-    .card {
-        background-color: #1e1e1e;
-        padding: 20px;
-        border-radius: 16px;
-        box-shadow: 0 8px 20px rgba(0,0,0,0.4);
-        margin-bottom: 20px;
-        border: 1px solid #333;
-    }
+    html, body, [class*="css"] { font-family: 'Vazir', 'Tahoma', sans-serif; direction: rtl; text-align: right; }
+    .stApp { background: linear-gradient(135deg, #0f2027, #203a43, #2c5364); }
+    .stTextInput > div > div > input, .stTextArea > div > div > textarea { direction: rtl; text-align: right; }
+    .card { background-color: #1e1e1e; padding: 20px; border-radius: 16px; box-shadow: 0 8px 20px rgba(0,0,0,0.4); margin-bottom: 20px; border: 1px solid #333; }
     .title { font-size: 2.4em; font-weight: 800; color: #6ee7b7; text-align: right; }
     .subtitle { color: #a7f3d0; font-size: 1.1em; text-align: right; margin-top: 5px; }
     .result-text { color: #e2e8f0; font-size: 1.1em; line-height: 1.8; text-align: right; direction: rtl; }
-
     [data-testid="stDataFrame"] { direction: rtl; text-align: right; }
-    .stDataFrame div[role="columnheader"], .stDataFrame div[role="gridcell"] {
-        text-align: right !important; justify-content: right !important;
-    }
+    .stDataFrame div[role="columnheader"], .stDataFrame div[role="gridcell"] { text-align: right !important; justify-content: right !important; }
     .stAlert { direction: rtl; text-align: right; }
 </style>
 """, unsafe_allow_html=True)
 
-# ===========================
-# تنظیمات ثابت
-# ===========================
 PERSIST_DIRECTORY = "./chroma_db_food"
 EMBEDDING_MODEL_NAME = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
 
@@ -77,18 +40,13 @@ def create_knowledge_base(urls):
             shutil.rmtree(PERSIST_DIRECTORY)
         except:
             pass
-            
     try:
         loader = WebBaseLoader(urls)
         data = loader.load()
         text_splitter = RecursiveCharacterTextSplitter(chunk_size=800, chunk_overlap=100)
         all_splits = text_splitter.split_documents(data)
         embedding_model = load_embedding_model()
-        vector_db = Chroma.from_documents(
-            documents=all_splits,
-            embedding=embedding_model,
-            persist_directory=PERSIST_DIRECTORY
-        )
+        vector_db = Chroma.from_documents(documents=all_splits, embedding=embedding_model, persist_directory=PERSIST_DIRECTORY)
         return True, len(all_splits)
     except Exception as e:
         return False, str(e)
@@ -99,11 +57,10 @@ def perform_rag_search(query):
     retriever = vector_db.as_retriever(search_kwargs={"k": 5})
     docs = retriever.invoke(query)
     
-    # --- مدل LLM از Hugging Face (رایگان و قوی) ---
+    # --- مدل جدید: Zephyr-7B-Beta (رایگان، قوی و بدون ارور task) ---
     llm = HuggingFaceEndpoint(
-        repo_id="mistralai/Mistral-7B-Instruct-v0.3",
+        repo_id="HuggingFaceH4/zephyr-7b-beta",  # تغییر اصلی اینجا
         huggingfacehub_api_token=st.secrets["HUGGINGFACEHUB_API_TOKEN"],
-        task="conversational",           # مهم: این خط ارور قبلی رو حل می‌کنه
         temperature=0.7,
         max_new_tokens=512,
         repetition_penalty=1.1
@@ -126,15 +83,10 @@ def perform_rag_search(query):
     response = llm.invoke(prompt)
     return response, docs
 
-# ===========================
-# رابط کاربری
-# ===========================
 st.markdown("""
 <div class="card">
     <div class="title">🥗 دستیار هوشمند غذا و رستوران</div>
-    <div class="subtitle">
-        جستجو در منوی رستوران‌ها، دستور پخت‌ها و مقالات غذایی
-    </div>
+    <div class="subtitle">جستجو در منوی رستوران‌ها، دستور پخت‌ها و مقالات غذایی</div>
 </div>
 """, unsafe_allow_html=True)
 
@@ -163,13 +115,9 @@ if st.button("🍳 بررسی و یادگیری"):
 
 if st.session_state.get("db_ready"):
     st.markdown("### 🍽️ مرحله ۳: پرسش و پاسخ")
-
     col1, col2 = st.columns([4, 1])
     with col1:
-        query = st.text_input(
-            "سوال شما:",
-            placeholder="مثلاً: کباب کوبیده خوب چه ویژگی‌هایی دارد؟"
-        )
+        query = st.text_input("سوال شما:", placeholder="مثلاً: کباب کوبیده خوب چه ویژگی‌هایی دارد؟")
     with col2:
         st.markdown("<div style='margin-top: 28px;'></div>", unsafe_allow_html=True)
         search = st.button("🔎 جستجو", use_container_width=True)
@@ -178,7 +126,6 @@ if st.session_state.get("db_ready"):
         with st.spinner('در حال جستجو و نوشتن پاسخ...'):
             try:
                 ai_response, source_docs = perform_rag_search(query)
-                
                 st.markdown(f"""
                 <div class="card">
                     <h3 style="color:#fbbf24; text-align:right; margin-bottom:10px;">🍕 پاسخ هوش مصنوعی:</h3>
@@ -194,17 +141,7 @@ if st.session_state.get("db_ready"):
                         "متن (خلاصه)": doc.page_content[:150] + "...",
                         "لینک منبع": doc.metadata.get('source', 'نامشخص'),
                     })
-                
                 df = pd.DataFrame(table_data)
-                st.dataframe(
-                    df,
-                    use_container_width=True,
-                    column_config={
-                        "لینک منبع": st.column_config.LinkColumn("لینک کامل"),
-                        "رتبه": st.column_config.NumberColumn("رتبه", format="%d")
-                    },
-                    hide_index=True
-                )
-                
+                st.dataframe(df, use_container_width=True, column_config={"لینک منبع": st.column_config.LinkColumn("لینک کامل"), "رتبه": st.column_config.NumberColumn("رتبه", format="%d")}, hide_index=True)
             except Exception as e:
                 st.error(f"خطا در تولید پاسخ: {e}")
